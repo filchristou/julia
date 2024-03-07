@@ -108,5 +108,5 @@ let m = Meta.@lower 1 + 1
     @test :a === @eval $m
     global test29262 = false
     @test :b === @eval $m
-    @test isempty(Base.catch_stack())
+    @test isempty(current_exceptions())
 end

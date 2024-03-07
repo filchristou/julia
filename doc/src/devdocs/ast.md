@@ -771,15 +771,24 @@ Boolean properties:
 
 How to interpret line numbers in a `CodeInfo` object:
 
+There are 2 common forms for this data: one used internally that compresses the data somewhat and one used in the compiler.
+They contain the same basic info, but the compiler version is all mutable while the version used internally is not.
+
+Many consumers may be able to call `Base.IRShow.buildLineInfoNode`,
+`Base.IRShow.append_scopes!`, or `Stacktraces.lookup(::InterpreterIP)` to avoid needing to
+(re-)implement these details specifically.
+
+The definitions of each of these are:
+
 ```
-struct DebugInfo
+struct Core.DebugInfo
     @noinline
     def::Union{Method,MethodInstance,Symbol}
     linetable::Union{Nothing,DebugInfo}
     edges::SimpleVector{DebugInfo}
     codelocs::String # compressed data
 end
-mutable struct DebugInfoStream
+mutable struct Core.Compiler.DebugInfoStream
     def::Union{Method,MethodInstance,Symbol}
     linetable::Union{Nothing,DebugInfo}
     edges::Vector{DebugInfo}
@@ -796,11 +805,17 @@ end
 
   * `linetable`
 
-    Another debuginfo that this was derived from. If `def` is not a Symbol, then it replaces
-    the current function for metadata. The codelocs line number also becomes an index into
-    this codelocs instead of being a line number itself, as described below.
+    Another debuginfo that this was derived from, which contains the actual line numbers,
+    such that this DebugInfo contains only the indexes into it. This avoids making copies,
+    as well as makes it possible to track how each individual statement transformed from
+    source to optimized, not just the separate line numbers. If `def` is not a Symbol, then
+    that object replaces the current function object for the metadata on what function is
+    conceptually being executed (e.g. think Cassette transforms here). The `codelocs` values
+    described below also are interpreted as an index into the `codelocs` in this object,
+    instead of being a line number itself.
 
-  * `edges` : Vector of the unique DebugInfo for every inlined function
+  * `edges` : Vector of the unique DebugInfo for every function inlined into this (which
+    recursively have the edges for everything inlined into them).
 
   * `firstline` (when uncompressed to DebugInfoStream)
 
@@ -819,10 +834,13 @@ end
        the line number itself if the `linetable` field is `nothing`
      2. the integer index into edges, giving the DebugInfo inlined there (or zero if there
         are no edges).
-     3. (if entry 2 is non-zero) the integer index into edges[].codelocs, giving the
-        recursion point, or zero indicating to use `edges[].firstline` as the line number.
+     3. (if entry 2 is non-zero) the integer index into edges[].codelocs, to interpret
+        recursively for each function in the inlining stack, or zero indicating to use
+        `edges[].firstline` as the line number.
 
    Special codes include:
-     - (zero, zero, *) : no change to the line number or edges
-     - (zero, *, *) : no line number, just edges (usually because of macro-expansion into
+     - (zero, zero, *) : no change to the line number or edges from the previous statement
+       (you may choose to interpret this either syntatically or lexically). The inlining
+       depth also might have changed, though most callers should ignore that.
+     - (zero, non-zero, *) : no line number, just edges (usually because of macro-expansion into
        top-level code)
