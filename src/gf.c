@@ -462,6 +462,18 @@ JL_DLLEXPORT jl_code_instance_t *jl_get_method_inferred(
     return codeinst;
 }
 
+JL_DLLEXPORT int jl_mi_cache_has_ci(jl_method_instance_t *mi,
+                                     jl_code_instance_t *ci)
+{
+    jl_code_instance_t *codeinst = jl_atomic_load_relaxed(&mi->cache);
+    while (codeinst) {
+        if (codeinst == ci)
+            return 1;
+        codeinst = jl_atomic_load_relaxed(&codeinst->next);
+    }
+    return 0;
+}
+
 JL_DLLEXPORT jl_code_instance_t *jl_new_codeinst(
         jl_method_instance_t *mi, jl_value_t *owner,
         jl_value_t *rettype, jl_value_t *exctype,
