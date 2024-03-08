@@ -58,15 +58,22 @@ end
 
 function Core.OpaqueClosure(ir::IRCode, @nospecialize env...;
                             isva::Bool = false,
+                            slotnames::Union{Nothing,Vector{Symbol}}=nothing,
                             do_compile::Bool = true)
     # NOTE: we need ir.argtypes[1] == typeof(env)
     ir = Core.Compiler.copy(ir)
-    nargs = length(ir.argtypes)-1
+    nargtypes = length(ir.argtypes)
+    nargs = nargtypes-1
     sig = compute_oc_signature(ir, nargs, isva)
     rt = compute_ir_rettype(ir)
     src = ccall(:jl_new_code_info_uninit, Ref{CodeInfo}, ())
-    src.slotnames = fill(:none, nargs+1)
-    src.slotflags = fill(zero(UInt8), length(ir.argtypes))
+    if slotnames === nothing
+        src.slotnames = fill(:none, nargs+1)
+    else
+        length(slotnames) == nargtypes || error("mismatched `argtypes` and `slotnames`")
+        src.slotnames = slotnames
+    end
+    src.slotflags = fill(zero(UInt8), nargtypes)
     src.slottypes = copy(ir.argtypes)
     src = Core.Compiler.ir_to_codeinf!(src, ir)
     return generate_opaque_closure(sig, Union{}, rt, src, nargs, isva, env...; do_compile)
